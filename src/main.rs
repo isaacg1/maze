@@ -20,6 +20,7 @@ use opengl_graphics::OpenGL;
 use piston::event_loop::*;
 use piston::input::*;
 use piston_window::{Glyphs, PistonWindow, TextureSettings, WindowSettings};
+use graphics::character::CharacterCache;
 
 // grid[cursor_y][cursor_x] = Cell::Cursor
 // grid elements that are walls never change.
@@ -38,6 +39,7 @@ const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const GREY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 const DARK_GREEN: [f32; 4] = [0.0, 0.5, 0.0, 1.0];
 const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+const DARK_PURPLE: [f32; 4] = [0.5, 0.0, 0.5, 1.0];
 
 impl Maze {
     pub fn generate_random(half_width: usize, half_height: usize) -> Self {
@@ -240,7 +242,7 @@ impl App {
             let avg_past =
                 self.past_completions.iter().sum::<f64>() / self.past_completions.len() as f64;
             Some(format!(
-                "{:.1}s {:.1}s {:.1}s",
+                "{:.1}s  {:.1}s  {:.1}s",
                 min_past, avg_past, max_past
             ))
         };
@@ -249,19 +251,26 @@ impl App {
         self.window.draw_2d(event, |c, gl| {
             clear(BLACK, gl);
 
+            let top_box = rectangle::rectangle_by_corners(0.0, 0.0, args.width, args.height * 0.2);
+            rectangle(DARK_PURPLE, top_box, c.transform, gl);
+
+            let text_width = glyphs.width(36, &time_str).expect("Successful text width");
             let text_transform;
             if let Some(past_str) = past_str {
-                let past_transform = c.transform.trans(args.width / 3.0, args.height * 0.2 / 2.0);
+                let past_width = glyphs.width(36, &past_str).expect("Successful past width");;
+                let past_transform = c.transform.trans(args.width / 3.0 - past_width / 2.0, args.height * 0.2 / 2.0);
                 text::Text::new_color(WHITE, 36)
+                    .round()
                     .draw(&past_str, glyphs, &c.draw_state, past_transform, gl)
                     .expect("Successful past drawing");
                 text_transform = c
                     .transform
-                    .trans(args.width * 2.0 / 3.0, args.height * 0.2 / 2.0);
+                    .trans(args.width * 2.0 / 3.0 - text_width / 2.0, args.height * 0.2 / 2.0);
             } else {
-                text_transform = c.transform.trans(args.width / 2.0, args.height * 0.2 / 2.0);
+                text_transform = c.transform.trans(args.width / 2.0 - text_width / 2.0, args.height * 0.2 / 2.0);
             }
             text::Text::new_color(text_color, 36)
+                .round()
                 .draw(&time_str, glyphs, &c.draw_state, text_transform, gl)
                 .expect("Successful text drawing");
 
@@ -269,7 +278,7 @@ impl App {
                 for col in 0..maze.width {
                     let color = maze.color_at_cell(row, col);
                     let box_rect = maze.rectangle_at_cell(args.width, args.height, row, col);
-                    let transform = c.transform.scale(1.0, 0.8).trans(0.0, args.height * 0.2);
+                    let transform = c.transform.scale(1.0, 0.8).trans(0.0, args.height * 0.2 / 0.8);
                     rectangle(color, box_rect, transform, gl);
                 }
             }
