@@ -13,11 +13,6 @@ use piston::event_loop::*;
 use piston::input::*;
 use piston::window::WindowSettings;
 
-pub struct App {
-    gl: GlGraphics, // OpenGL drawing backend.
-    maze: Maze,
-}
-
 // grid[cursor_y][cursor_x] = Cell::Cursor
 // grid elements that are walls never change.
 // Empty <=> Cursor <=> Visited only.
@@ -172,6 +167,12 @@ impl Cell {
     }
 }
 
+pub struct App {
+    gl: GlGraphics, // OpenGL drawing backend.
+    maze: Maze,
+    time: f64,
+}
+
 impl App {
     // Rendering from scratch
     fn render(&mut self, args: &RenderArgs) {
@@ -186,7 +187,10 @@ impl App {
                 for col in 0..maze.width {
                     let color = maze.color_at_cell(row, col);
                     let box_rect = maze.rectangle_at_cell(args.width, args.height, row, col);
-                    rectangle(color, box_rect, c.transform, gl);
+                    let transform = c.transform
+                        .scale(1.0, 0.8)
+                        .trans(0.0, args.height * 0.2);
+                    rectangle(color, box_rect, transform, gl);
                 }
             }
         });
@@ -221,6 +225,7 @@ fn main() {
     let mut app = App {
         gl: GlGraphics::new(opengl),
         maze: Maze::generate_random(width, height),
+        time: 0.0,
     };
 
     let mut events = Events::new(EventSettings::new());

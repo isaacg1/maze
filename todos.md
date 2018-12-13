@@ -12,3 +12,5 @@ Completed:
 
 * Added goal stay
   * Added freezing on completion
+
+* Added default size
