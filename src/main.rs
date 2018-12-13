@@ -1,5 +1,8 @@
+#![feature(duration_float)]
 use std::collections::HashMap;
 use std::collections::HashSet;
+
+use std::time::SystemTime;
 
 extern crate rand;
 use rand::thread_rng;
@@ -16,11 +19,11 @@ extern crate opengl_graphics;
 extern crate piston;
 extern crate piston_window;
 
+use graphics::character::CharacterCache;
 use opengl_graphics::OpenGL;
 use piston::event_loop::*;
 use piston::input::*;
 use piston_window::{Glyphs, PistonWindow, TextureSettings, WindowSettings};
-use graphics::character::CharacterCache;
 
 // grid[cursor_y][cursor_x] = Cell::Cursor
 // grid elements that are walls never change.
@@ -208,8 +211,8 @@ pub struct App {
     window: PistonWindow,
     maze: Maze,
     past_completions: Vec<f64>,
-    time: f64,
-    completion_time: Option<f64>,
+    start_time: SystemTime,
+    completion_duration: Option<f64>,
     glyphs: Glyphs,
 }
 
@@ -220,8 +223,15 @@ impl App {
 
         let maze = &self.maze;
 
-        let time_str = format!("{:.1}s", self.completion_time.unwrap_or(self.time));
-        let text_color = if self.completion_time.is_some() {
+        let time_str = format!(
+            "{:.1}s",
+            self.completion_duration.unwrap_or_else(|| self
+                .start_time
+                .elapsed()
+                .expect("Positive time running so far")
+                .as_float_secs())
+        );
+        let text_color = if self.completion_duration.is_some() {
             GREEN
         } else {
             WHITE
@@ -258,16 +268,21 @@ impl App {
             let text_transform;
             if let Some(past_str) = past_str {
                 let past_width = glyphs.width(36, &past_str).expect("Successful past width");;
-                let past_transform = c.transform.trans(args.width / 3.0 - past_width / 2.0, args.height * 0.2 / 2.0);
+                let past_transform = c
+                    .transform
+                    .trans(args.width / 3.0 - past_width / 2.0, args.height * 0.2 / 2.0);
                 text::Text::new_color(WHITE, 36)
                     .round()
                     .draw(&past_str, glyphs, &c.draw_state, past_transform, gl)
                     .expect("Successful past drawing");
+                text_transform = c.transform.trans(
+                    args.width * 2.0 / 3.0 - text_width / 2.0,
+                    args.height * 0.2 / 2.0,
+                );
+            } else {
                 text_transform = c
                     .transform
-                    .trans(args.width * 2.0 / 3.0 - text_width / 2.0, args.height * 0.2 / 2.0);
-            } else {
-                text_transform = c.transform.trans(args.width / 2.0 - text_width / 2.0, args.height * 0.2 / 2.0);
+                    .trans(args.width / 2.0 - text_width / 2.0, args.height * 0.2 / 2.0);
             }
             text::Text::new_color(text_color, 36)
                 .round()
@@ -278,15 +293,14 @@ impl App {
                 for col in 0..maze.width {
                     let color = maze.color_at_cell(row, col);
                     let box_rect = maze.rectangle_at_cell(args.width, args.height, row, col);
-                    let transform = c.transform.scale(1.0, 0.8).trans(0.0, args.height * 0.2 / 0.8);
+                    let transform = c
+                        .transform
+                        .scale(1.0, 0.8)
+                        .trans(0.0, args.height * 0.2 / 0.8);
                     rectangle(color, box_rect, transform, gl);
                 }
             }
         });
-    }
-
-    fn update(&mut self, args: &UpdateArgs) {
-        self.time += args.dt;
     }
 
     fn update_button(&mut self, args: &ButtonArgs) {
@@ -299,23 +313,27 @@ impl App {
                 Button::Keyboard(keyboard::Key::R) => self.reset(),
                 _ => (),
             }
-            if self.maze.is_done() && !self.completion_time.is_some() {
-                self.completion_time = Some(self.time);
+            if self.maze.is_done() && !self.completion_duration.is_some() {
+                let completion_duration = self
+                    .start_time
+                    .elapsed()
+                    .expect("Time increased between start and finish");
+                self.completion_duration = Some(completion_duration.as_float_secs());
             }
         }
     }
 
     fn reset(&mut self) {
-        if let Some(completion_time) = self.completion_time {
-            self.past_completions.push(completion_time);
+        if let Some(completion_duration) = self.completion_duration {
+            self.past_completions.push(completion_duration);
         }
         let old_width = self.maze.width;
         let old_height = self.maze.height;
         self.maze = Maze::generate_random(old_width / 2 + 1, old_height / 2 + 1);
         assert_eq!(old_width, self.maze.width);
         assert_eq!(old_height, self.maze.height);
-        self.time = 0.0;
-        self.completion_time = None;
+        self.start_time = SystemTime::now();
+        self.completion_duration = None;
     }
 }
 fn main() {
@@ -346,8 +364,8 @@ fn main() {
     let mut app = App {
         window: window,
         maze: Maze::generate_random(width, height),
-        time: 0.0,
-        completion_time: None,
+        start_time: SystemTime::now(),
+        completion_duration: None,
         past_completions: vec![],
         glyphs,
     };
@@ -360,9 +378,6 @@ fn main() {
         }
         if let Some(b) = e.button_args() {
             app.update_button(&b);
-        }
-        if let Some(u) = e.update_args() {
-            app.update(&u);
         }
     }
 }
