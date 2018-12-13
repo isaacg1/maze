@@ -1,6 +1,12 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+
 extern crate rand;
 use rand::thread_rng;
 use rand::Rng;
+
+extern crate noisy_float;
+use noisy_float::prelude::*;
 
 extern crate find_folder;
 
@@ -38,33 +44,55 @@ impl Maze {
         let width = 2 * half_width - 1;
         let height = 2 * half_height - 1;
         let edges = {
-            let mut possible_edges: Vec<((usize, usize), (usize, usize))> = Vec::new();
-            let mut vertices_seen: Vec<(usize, usize)> = Vec::new();
+            let mut possible_edges: HashSet<((usize, usize), (usize, usize))> = HashSet::new();
+            let mut vertices_seen: HashMap<(usize, usize), bool> = HashMap::new();
             let mut out_edges: Vec<((usize, usize), (usize, usize))> = Vec::new();
-            vertices_seen.push((0, 0));
-            possible_edges.push(((0, 0), (1, 0)));
-            possible_edges.push(((0, 0), (0, 1)));
+            vertices_seen.insert((0, 0), true);
+            vertices_seen.insert((half_height - 1, half_width - 1), false);
+            possible_edges.insert(((0, 0), (1, 0)));
+            possible_edges.insert(((0, 0), (0, 1)));
+            possible_edges.insert((
+                (half_height - 1, half_width - 1),
+                (half_height - 2, half_width - 1),
+            ));
+            possible_edges.insert((
+                (half_height - 1, half_width - 1),
+                (half_height - 1, half_width - 2),
+            ));
+            let mut colors_crossed = false;
 
             let mut rng = thread_rng();
             while !possible_edges.is_empty() {
                 let new_edge_index = rng.gen_range(0, possible_edges.len());
-                let new_edge = possible_edges.remove(new_edge_index);
-                assert!(vertices_seen.contains(&new_edge.0));
-                if !vertices_seen.contains(&new_edge.1) {
+                let new_edge = possible_edges
+                    .iter()
+                    .nth(new_edge_index)
+                    .expect("Had the randomly selected edge")
+                    .clone();
+                possible_edges.remove(&new_edge);
+                let old_color = vertices_seen.get(&new_edge.0).expect("Old vertex was seen");
+                let previous_new_color = vertices_seen.get(&new_edge.1);
+                if previous_new_color.is_none()
+                    || !colors_crossed && previous_new_color == Some(&!old_color)
+                {
                     let old_vertex = new_edge.1;
                     if old_vertex.0 > 0 {
-                        possible_edges.push((old_vertex, (old_vertex.0 - 1, old_vertex.1)));
+                        possible_edges.insert((old_vertex, (old_vertex.0 - 1, old_vertex.1)));
                     }
                     if old_vertex.0 < half_height - 1 {
-                        possible_edges.push((old_vertex, (old_vertex.0 + 1, old_vertex.1)));
+                        possible_edges.insert((old_vertex, (old_vertex.0 + 1, old_vertex.1)));
                     }
                     if old_vertex.1 > 0 {
-                        possible_edges.push((old_vertex, (old_vertex.0, old_vertex.1 - 1)));
+                        possible_edges.insert((old_vertex, (old_vertex.0, old_vertex.1 - 1)));
                     }
                     if old_vertex.1 < half_width - 1 {
-                        possible_edges.push((old_vertex, (old_vertex.0, old_vertex.1 + 1)));
+                        possible_edges.insert((old_vertex, (old_vertex.0, old_vertex.1 + 1)));
                     }
-                    vertices_seen.push(new_edge.1);
+                    if previous_new_color.is_none() {
+                        vertices_seen.insert(new_edge.1, *old_color);
+                    } else {
+                        colors_crossed = true;
+                    }
                     out_edges.push(new_edge);
                 }
             }
@@ -177,6 +205,7 @@ impl Cell {
 pub struct App {
     window: PistonWindow,
     maze: Maze,
+    past_completions: Vec<f64>,
     time: f64,
     completion_time: Option<f64>,
     glyphs: Glyphs,
@@ -195,11 +224,43 @@ impl App {
         } else {
             WHITE
         };
+        let past_str = if self.past_completions.is_empty() {
+            None
+        } else {
+            let max_past = self
+                .past_completions
+                .iter()
+                .max_by_key(|&&f| n64(f))
+                .unwrap();
+            let min_past = self
+                .past_completions
+                .iter()
+                .min_by_key(|&&f| n64(f))
+                .unwrap();
+            let avg_past =
+                self.past_completions.iter().sum::<f64>() / self.past_completions.len() as f64;
+            Some(format!(
+                "{:.1}s {:.1}s {:.1}s",
+                min_past, avg_past, max_past
+            ))
+        };
+
         let glyphs = &mut self.glyphs;
         self.window.draw_2d(event, |c, gl| {
             clear(BLACK, gl);
 
-            let text_transform = c.transform.trans(args.width / 2.0, args.height * 0.2 / 2.0);
+            let text_transform;
+            if let Some(past_str) = past_str {
+                let past_transform = c.transform.trans(args.width / 3.0, args.height * 0.2 / 2.0);
+                text::Text::new_color(WHITE, 36)
+                    .draw(&past_str, glyphs, &c.draw_state, past_transform, gl)
+                    .expect("Successful past drawing");
+                text_transform = c
+                    .transform
+                    .trans(args.width * 2.0 / 3.0, args.height * 0.2 / 2.0);
+            } else {
+                text_transform = c.transform.trans(args.width / 2.0, args.height * 0.2 / 2.0);
+            }
             text::Text::new_color(text_color, 36)
                 .draw(&time_str, glyphs, &c.draw_state, text_transform, gl)
                 .expect("Successful text drawing");
@@ -236,6 +297,9 @@ impl App {
     }
 
     fn reset(&mut self) {
+        if let Some(completion_time) = self.completion_time {
+            self.past_completions.push(completion_time);
+        }
         let old_width = self.maze.width;
         let old_height = self.maze.height;
         self.maze = Maze::generate_random(old_width / 2 + 1, old_height / 2 + 1);
@@ -243,14 +307,16 @@ impl App {
         assert_eq!(old_height, self.maze.height);
         self.time = 0.0;
         self.completion_time = None;
-
     }
 }
 fn main() {
     let mut args = std::env::args();
     args.next();
     let width = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);
-    let height = args.next().and_then(|s| s.parse().ok()).unwrap_or(width * 3 / 5);
+    let height = args
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(width * 3 / 5);
     let opengl = OpenGL::V3_2;
 
     let window: PistonWindow = WindowSettings::new("maze", [800, 600])
@@ -273,6 +339,7 @@ fn main() {
         maze: Maze::generate_random(width, height),
         time: 0.0,
         completion_time: None,
+        past_completions: vec![],
         glyphs,
     };
 

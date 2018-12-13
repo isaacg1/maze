@@ -1,5 +1,4 @@
 TODO:
-* Generate maze from bottom right and top left, not just top left, so harder to trace backwards
 
 * Incremental display updates
 
@@ -15,3 +14,6 @@ Completed:
 * Timer, indicating how long I've been going
   * Change color on completion
 
+* Generate maze from bottom right and top left, not just top left, so harder to trace backwards
+
+* Add average, max, min times
