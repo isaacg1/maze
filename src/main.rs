@@ -26,19 +26,16 @@ struct Maze {
     height: usize,
     width: usize,
     cursor: (usize, usize),
+    goal: (usize, usize),
 }
 
+const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+const GREY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+const DARK_GREEN: [f32; 4] = [0.0, 0.5, 0.0, 1.0];
+
 impl Maze {
-    pub fn empty(width: usize, height: usize) -> Self {
-        let mut grid = vec![vec![Cell::Empty; width]; height];
-        grid[0][0] = Cell::Cursor;
-        Self {
-            grid,
-            height,
-            width,
-            cursor: (0, 0),
-        }
-    }
     pub fn generate_random(half_width: usize, half_height: usize) -> Self {
         let width = 2 * half_width - 1;
         let height = 2 * half_height - 1;
@@ -87,27 +84,31 @@ impl Maze {
             }
         }
         grid[0][0] = Cell::Cursor;
+        grid[height-1][width-1] = Cell::Goal;
         Self {
             grid,
             height,
             width,
             cursor: (0, 0),
+            goal: (height-1, width-1),
         }
     }
 
     fn move_delta(&mut self, dr: isize, dc: isize) {
-        let (row, col) = self.cursor;
-        let new_row = row as isize + dr;
-        let new_col = col as isize + dc;
-        if new_row >= 0 && new_col >= 0 {
-            let new_row = new_row as usize;
-            let new_col = new_col as usize;
-            if new_row < self.height && new_col < self.width {
-                let old_target = &self.grid[new_row][new_col];
-                if *old_target != Cell::Wall {
-                    self.grid[row][col] = old_target.flip();
-                    self.grid[new_row][new_col] = Cell::Cursor;
-                    self.cursor = (new_row, new_col);
+        if self.cursor != self.goal {
+            let (row, col) = self.cursor;
+            let new_row = row as isize + dr;
+            let new_col = col as isize + dc;
+            if new_row >= 0 && new_col >= 0 {
+                let new_row = new_row as usize;
+                let new_col = new_col as usize;
+                if new_row < self.height && new_col < self.width {
+                    let old_target = &self.grid[new_row][new_col];
+                    if *old_target != Cell::Wall {
+                        self.grid[row][col] = old_target.flip();
+                        self.grid[new_row][new_col] = Cell::Cursor;
+                        self.cursor = (new_row, new_col);
+                    }
                 }
             }
         }
@@ -119,6 +120,7 @@ impl Maze {
             Cell::Empty => WHITE,
             Cell::Visited => RED,
             Cell::Cursor => GREY,
+            Cell::Goal => DARK_GREEN,
         }
     }
 
@@ -155,6 +157,7 @@ enum Cell {
     Empty,
     Visited,
     Cursor,
+    Goal,
 }
 
 impl Cell {
@@ -164,14 +167,10 @@ impl Cell {
             Cell::Cursor => panic!("Cursor cannot be flipped"),
             Cell::Empty => Cell::Visited,
             Cell::Visited => Cell::Empty,
+            Cell::Goal => Cell::Visited,
         }
     }
 }
-
-const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-const GREY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 
 impl App {
     // Rendering from scratch
@@ -208,8 +207,8 @@ impl App {
 fn main() {
     let mut args = std::env::args();
     args.next();
-    let width = args.next().unwrap().parse().unwrap();
-    let height = args.next().unwrap().parse().unwrap();
+    let width = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);
+    let height = args.next().and_then(|s| s.parse().ok()).unwrap_or(width);
     let opengl = OpenGL::V3_2;
 
     let mut window: Window = WindowSettings::new("maze", [800, 600])
