@@ -1,12 +1,9 @@
 TODO:
-
-* Timer, indicating how long I've been going
-  * Change color on completion
-
-Generate maze from bottom right and top left, not just top left, so harder to trace backwards
-* Display message (Try to reach the goal -> you win) when goal is reached.
+* Generate maze from bottom right and top left, not just top left, so harder to trace backwards
 
 * Incremental display updates
+
+* Make window resizing work better
 
 Completed:
 
@@ -14,3 +11,7 @@ Completed:
   * Added freezing on completion
 
 * Added default size
+
+* Timer, indicating how long I've been going
+  * Change color on completion
+

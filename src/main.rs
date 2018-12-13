@@ -2,16 +2,18 @@ extern crate rand;
 use rand::thread_rng;
 use rand::Rng;
 
+extern crate find_folder;
+
 extern crate glutin_window;
 extern crate graphics;
 extern crate opengl_graphics;
 extern crate piston;
+extern crate piston_window;
 
-use glutin_window::GlutinWindow as Window;
-use opengl_graphics::{GlGraphics, OpenGL};
+use opengl_graphics::OpenGL;
 use piston::event_loop::*;
 use piston::input::*;
-use piston::window::WindowSettings;
+use piston_window::{Glyphs, PistonWindow, TextureSettings, WindowSettings};
 
 // grid[cursor_y][cursor_x] = Cell::Cursor
 // grid elements that are walls never change.
@@ -29,6 +31,7 @@ const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const GREY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 const DARK_GREEN: [f32; 4] = [0.0, 0.5, 0.0, 1.0];
+const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
 
 impl Maze {
     pub fn generate_random(half_width: usize, half_height: usize) -> Self {
@@ -79,18 +82,18 @@ impl Maze {
             }
         }
         grid[0][0] = Cell::Cursor;
-        grid[height-1][width-1] = Cell::Goal;
+        grid[height - 1][width - 1] = Cell::Goal;
         Self {
             grid,
             height,
             width,
             cursor: (0, 0),
-            goal: (height-1, width-1),
+            goal: (height - 1, width - 1),
         }
     }
 
     fn move_delta(&mut self, dr: isize, dc: isize) {
-        if self.cursor != self.goal {
+        if !self.is_done() {
             let (row, col) = self.cursor;
             let new_row = row as isize + dr;
             let new_col = col as isize + dc;
@@ -144,6 +147,10 @@ impl Maze {
 
         rectangle::rectangle_by_corners(left_x, top_y, right_x, bottom_y)
     }
+
+    fn is_done(&self) -> bool {
+        self.cursor == self.goal
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -168,32 +175,48 @@ impl Cell {
 }
 
 pub struct App {
-    gl: GlGraphics, // OpenGL drawing backend.
+    window: PistonWindow,
     maze: Maze,
     time: f64,
+    completion_time: Option<f64>,
+    glyphs: Glyphs,
 }
 
 impl App {
     // Rendering from scratch
-    fn render(&mut self, args: &RenderArgs) {
+    fn render(&mut self, args: &RenderArgs, event: &Event) {
         use graphics::*;
 
         let maze = &self.maze;
 
-        self.gl.draw(args.viewport(), |c, gl| {
+        let time_str = format!("{:.1}s", self.completion_time.unwrap_or(self.time));
+        let text_color = if self.completion_time.is_some() {
+            GREEN
+        } else {
+            WHITE
+        };
+        let glyphs = &mut self.glyphs;
+        self.window.draw_2d(event, |c, gl| {
             clear(BLACK, gl);
+
+            let text_transform = c.transform.trans(args.width / 2.0, args.height * 0.2 / 2.0);
+            text::Text::new_color(text_color, 36)
+                .draw(&time_str, glyphs, &c.draw_state, text_transform, gl)
+                .expect("Successful text drawing");
 
             for row in 0..maze.height {
                 for col in 0..maze.width {
                     let color = maze.color_at_cell(row, col);
                     let box_rect = maze.rectangle_at_cell(args.width, args.height, row, col);
-                    let transform = c.transform
-                        .scale(1.0, 0.8)
-                        .trans(0.0, args.height * 0.2);
+                    let transform = c.transform.scale(1.0, 0.8).trans(0.0, args.height * 0.2);
                     rectangle(color, box_rect, transform, gl);
                 }
             }
         });
+    }
+
+    fn update(&mut self, args: &UpdateArgs) {
+        self.time += args.dt;
     }
 
     fn update_button(&mut self, args: &ButtonArgs) {
@@ -203,39 +226,67 @@ impl App {
                 Button::Keyboard(keyboard::Key::Down) => self.maze.move_delta(1, 0),
                 Button::Keyboard(keyboard::Key::Left) => self.maze.move_delta(0, -1),
                 Button::Keyboard(keyboard::Key::Right) => self.maze.move_delta(0, 1),
+                Button::Keyboard(keyboard::Key::R) => self.reset(),
                 _ => (),
             }
+            if self.maze.is_done() && !self.completion_time.is_some() {
+                self.completion_time = Some(self.time);
+            }
         }
+    }
+
+    fn reset(&mut self) {
+        let old_width = self.maze.width;
+        let old_height = self.maze.height;
+        self.maze = Maze::generate_random(old_width / 2 + 1, old_height / 2 + 1);
+        assert_eq!(old_width, self.maze.width);
+        assert_eq!(old_height, self.maze.height);
+        self.time = 0.0;
+        self.completion_time = None;
+
     }
 }
 fn main() {
     let mut args = std::env::args();
     args.next();
     let width = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);
-    let height = args.next().and_then(|s| s.parse().ok()).unwrap_or(width);
+    let height = args.next().and_then(|s| s.parse().ok()).unwrap_or(width * 3 / 5);
     let opengl = OpenGL::V3_2;
 
-    let mut window: Window = WindowSettings::new("maze", [800, 600])
+    let window: PistonWindow = WindowSettings::new("maze", [800, 600])
         .opengl(opengl)
         .exit_on_esc(true)
+        .fullscreen(true)
         .build()
         .unwrap();
 
+    let assets = find_folder::Search::ParentsThenKids(3, 3)
+        .for_folder("assets")
+        .expect("An assets folder");
+    let ref font = assets.join("FiraSans-Regular.ttf");
+    let factory = window.factory.clone();
+    let glyphs = Glyphs::new(font, factory, TextureSettings::new()).expect("Got glyphs");
+
     // Create a new game and run it.
     let mut app = App {
-        gl: GlGraphics::new(opengl),
+        window: window,
         maze: Maze::generate_random(width, height),
         time: 0.0,
+        completion_time: None,
+        glyphs,
     };
 
     let mut events = Events::new(EventSettings::new());
 
-    while let Some(e) = events.next(&mut window) {
+    while let Some(e) = events.next(&mut app.window) {
         if let Some(r) = e.render_args() {
-            app.render(&r);
+            app.render(&r, &e);
         }
         if let Some(b) = e.button_args() {
             app.update_button(&b);
+        }
+        if let Some(u) = e.update_args() {
+            app.update(&u);
         }
     }
 }
