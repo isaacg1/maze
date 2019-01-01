@@ -135,8 +135,8 @@ impl Maze {
             let col = start_col + end_col;
             grid[row][col] = Cell::Empty;
         }
-        for row in 0..height / 2 + 1 {
-            for col in 0..width / 2 + 1 {
+        for row in 0..=height / 2 {
+            for col in 0..=width / 2 {
                 grid[2 * row][2 * col] = Cell::Empty;
             }
         }
@@ -222,7 +222,7 @@ enum Cell {
 }
 
 impl Cell {
-    fn flip(&self) -> Self {
+    fn flip(self) -> Self {
         match self {
             Cell::Wall => panic!("Wall cannot be flipped"),
             Cell::Cursor => panic!("Cursor cannot be flipped"),
@@ -322,7 +322,7 @@ impl App {
         });
     }
 
-    fn update(&mut self, args: &UpdateArgs) {
+    fn update(&mut self, args: UpdateArgs) {
         self.time += args.dt;
     }
 
@@ -381,7 +381,7 @@ fn main() {
 
     // Create a new game and run it.
     let mut app = App {
-        window: window,
+        window,
         maze: Maze::generate_random(width, height),
         time: 0.0,
         completion_time: None,
@@ -399,7 +399,7 @@ fn main() {
             app.update_button(&b);
         }
         if let Some(u) = e.update_args() {
-            app.update(&u);
+            app.update(u);
         }
     }
 }
