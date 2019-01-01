@@ -69,11 +69,10 @@ impl Maze {
             let mut rng = thread_rng();
             while !possible_edges.is_empty() {
                 let new_edge_index = rng.gen_range(0, possible_edges.len());
-                let new_edge = possible_edges
+                let new_edge = *possible_edges
                     .iter()
                     .nth(new_edge_index)
-                    .expect("Had the randomly selected edge")
-                    .clone();
+                    .expect("Had the randomly selected edge");
                 possible_edges.remove(&new_edge);
                 let old_color = vertices_seen.get(&new_edge.0).expect("Old vertex was seen");
                 let previous_new_color = vertices_seen.get(&new_edge.1);
@@ -109,8 +108,8 @@ impl Maze {
             let col = start_col + end_col;
             grid[row][col] = Cell::Empty;
         }
-        for row in 0..height / 2 + 1 {
-            for col in 0..width / 2 + 1 {
+        for row in 0..=height / 2 {
+            for col in 0..=width / 2 {
                 grid[2 * row][2 * col] = Cell::Empty;
             }
         }
@@ -196,13 +195,12 @@ enum Cell {
 }
 
 impl Cell {
-    fn flip(&self) -> Self {
+    fn flip(self) -> Self {
         match self {
             Cell::Wall => panic!("Wall cannot be flipped"),
             Cell::Cursor => panic!("Cursor cannot be flipped"),
-            Cell::Empty => Cell::Visited,
+            Cell::Empty | Cell::Goal => Cell::Visited,
             Cell::Visited => Cell::Empty,
-            Cell::Goal => Cell::Visited,
         }
     }
 }
@@ -313,7 +311,7 @@ impl App {
                 Button::Keyboard(keyboard::Key::R) => self.reset(),
                 _ => (),
             }
-            if self.maze.is_done() && !self.completion_duration.is_some() {
+            if self.maze.is_done() && self.completion_duration.is_none() {
                 let completion_duration = self
                     .start_time
                     .elapsed()
@@ -356,13 +354,13 @@ fn main() {
     let assets = find_folder::Search::ParentsThenKids(3, 3)
         .for_folder("assets")
         .expect("An assets folder");
-    let ref font = assets.join("FiraSans-Regular.ttf");
+    let font = assets.join("FiraSans-Regular.ttf");
     let factory = window.factory.clone();
-    let glyphs = Glyphs::new(font, factory, TextureSettings::new()).expect("Got glyphs");
+    let glyphs = Glyphs::new(&font, factory, TextureSettings::new()).expect("Got glyphs");
 
     // Create a new game and run it.
     let mut app = App {
-        window: window,
+        window,
         maze: Maze::generate_random(width, height),
         start_time: SystemTime::now(),
         completion_duration: None,

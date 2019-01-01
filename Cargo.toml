@@ -1,5 +1,5 @@
 [package]
-name = "ui3"
+name = "maze"
 version = "0.1.0"
 authors = ["Isaac Grosof <isaacbg227@gmail.com>"]
 edition = "2018"
