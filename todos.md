@@ -4,6 +4,8 @@ TODO:
 
 * Make window resizing work better
 
+* Used different timing
+
 Completed:
 
 * Added goal stay
@@ -19,3 +21,4 @@ Completed:
 * Add average, max, min times
 
 * Timer now uses system time, not incremental time
+* Used VecSet in maze generation for fast random sampling
