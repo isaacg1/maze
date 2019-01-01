@@ -4,6 +4,8 @@ TODO:
 
 * Make window resizing work better
 
+* Used different timing
+
 Completed:
 
 * Added goal stay
@@ -17,3 +19,5 @@ Completed:
 * Generate maze from bottom right and top left, not just top left, so harder to trace backwards
 
 * Add average, max, min times
+
+* Used VecSet in maze generation for fast random sampling

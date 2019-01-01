@@ -16,11 +16,55 @@ extern crate opengl_graphics;
 extern crate piston;
 extern crate piston_window;
 
+use graphics::character::CharacterCache;
 use opengl_graphics::OpenGL;
 use piston::event_loop::*;
 use piston::input::*;
 use piston_window::{Glyphs, PistonWindow, TextureSettings, WindowSettings};
-use graphics::character::CharacterCache;
+
+struct VecSet<T> {
+    set: HashSet<T>,
+    vec: Vec<T>,
+}
+
+impl<T> VecSet<T>
+where
+    T: Clone + Eq + std::hash::Hash,
+{
+    fn new() -> Self {
+        Self {
+            set: HashSet::new(),
+            vec: Vec::new(),
+        }
+    }
+    fn insert(&mut self, elem: T) {
+        assert_eq!(self.set.len(), self.vec.len());
+        let was_new = self.set.insert(elem.clone());
+        if was_new {
+            self.vec.push(elem);
+        }
+    }
+    fn remove_random(&mut self) -> T {
+        assert_eq!(self.set.len(), self.vec.len());
+        let index = thread_rng().gen_range(0, self.vec.len());
+        let elem = self.vec.swap_remove(index);
+        let was_present = self.set.remove(&elem);
+        assert!(was_present);
+        elem
+    }
+    fn is_empty(&self) -> bool {
+        assert_eq!(self.set.len(), self.vec.len());
+        self.vec.is_empty()
+    }
+}
+
+const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+const GREY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+const DARK_GREEN: [f32; 4] = [0.0, 0.5, 0.0, 1.0];
+const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+const DARK_PURPLE: [f32; 4] = [0.5, 0.0, 0.5, 1.0];
 
 // grid[cursor_y][cursor_x] = Cell::Cursor
 // grid elements that are walls never change.
@@ -33,20 +77,12 @@ struct Maze {
     goal: (usize, usize),
 }
 
-const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-const GREY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
-const DARK_GREEN: [f32; 4] = [0.0, 0.5, 0.0, 1.0];
-const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
-const DARK_PURPLE: [f32; 4] = [0.5, 0.0, 0.5, 1.0];
-
 impl Maze {
     pub fn generate_random(half_width: usize, half_height: usize) -> Self {
         let width = 2 * half_width - 1;
         let height = 2 * half_height - 1;
         let edges = {
-            let mut possible_edges: HashSet<((usize, usize), (usize, usize))> = HashSet::new();
+            let mut possible_edges: VecSet<((usize, usize), (usize, usize))> = VecSet::new();
             let mut vertices_seen: HashMap<(usize, usize), bool> = HashMap::new();
             let mut out_edges: Vec<((usize, usize), (usize, usize))> = Vec::new();
             vertices_seen.insert((0, 0), true);
@@ -63,15 +99,8 @@ impl Maze {
             ));
             let mut colors_crossed = false;
 
-            let mut rng = thread_rng();
             while !possible_edges.is_empty() {
-                let new_edge_index = rng.gen_range(0, possible_edges.len());
-                let new_edge = possible_edges
-                    .iter()
-                    .nth(new_edge_index)
-                    .expect("Had the randomly selected edge")
-                    .clone();
-                possible_edges.remove(&new_edge);
+                let new_edge = possible_edges.remove_random();
                 let old_color = vertices_seen.get(&new_edge.0).expect("Old vertex was seen");
                 let previous_new_color = vertices_seen.get(&new_edge.1);
                 if previous_new_color.is_none()
@@ -258,16 +287,21 @@ impl App {
             let text_transform;
             if let Some(past_str) = past_str {
                 let past_width = glyphs.width(36, &past_str).expect("Successful past width");;
-                let past_transform = c.transform.trans(args.width / 3.0 - past_width / 2.0, args.height * 0.2 / 2.0);
+                let past_transform = c
+                    .transform
+                    .trans(args.width / 3.0 - past_width / 2.0, args.height * 0.2 / 2.0);
                 text::Text::new_color(WHITE, 36)
                     .round()
                     .draw(&past_str, glyphs, &c.draw_state, past_transform, gl)
                     .expect("Successful past drawing");
+                text_transform = c.transform.trans(
+                    args.width * 2.0 / 3.0 - text_width / 2.0,
+                    args.height * 0.2 / 2.0,
+                );
+            } else {
                 text_transform = c
                     .transform
-                    .trans(args.width * 2.0 / 3.0 - text_width / 2.0, args.height * 0.2 / 2.0);
-            } else {
-                text_transform = c.transform.trans(args.width / 2.0 - text_width / 2.0, args.height * 0.2 / 2.0);
+                    .trans(args.width / 2.0 - text_width / 2.0, args.height * 0.2 / 2.0);
             }
             text::Text::new_color(text_color, 36)
                 .round()
@@ -278,7 +312,10 @@ impl App {
                 for col in 0..maze.width {
                     let color = maze.color_at_cell(row, col);
                     let box_rect = maze.rectangle_at_cell(args.width, args.height, row, col);
-                    let transform = c.transform.scale(1.0, 0.8).trans(0.0, args.height * 0.2 / 0.8);
+                    let transform = c
+                        .transform
+                        .scale(1.0, 0.8)
+                        .trans(0.0, args.height * 0.2 / 0.8);
                     rectangle(color, box_rect, transform, gl);
                 }
             }
@@ -299,7 +336,7 @@ impl App {
                 Button::Keyboard(keyboard::Key::R) => self.reset(),
                 _ => (),
             }
-            if self.maze.is_done() && !self.completion_time.is_some() {
+            if self.maze.is_done() && self.completion_time.is_none() {
                 self.completion_time = Some(self.time);
             }
         }
@@ -338,9 +375,9 @@ fn main() {
     let assets = find_folder::Search::ParentsThenKids(3, 3)
         .for_folder("assets")
         .expect("An assets folder");
-    let ref font = assets.join("FiraSans-Regular.ttf");
+    let font = assets.join("FiraSans-Regular.ttf");
     let factory = window.factory.clone();
-    let glyphs = Glyphs::new(font, factory, TextureSettings::new()).expect("Got glyphs");
+    let glyphs = Glyphs::new(&font, factory, TextureSettings::new()).expect("Got glyphs");
 
     // Create a new game and run it.
     let mut app = App {
