@@ -21,7 +21,6 @@ extern crate piston_window;
 
 use graphics::character::CharacterCache;
 use opengl_graphics::OpenGL;
-use piston::event_loop::*;
 use piston::input::*;
 use piston_window::{Glyphs, PistonWindow, TextureSettings, WindowSettings};
 struct VecSet<T> {
@@ -397,9 +396,7 @@ fn main() {
         glyphs,
     };
 
-    let mut events = Events::new(EventSettings::new());
-
-    while let Some(e) = events.next(&mut app.window) {
+    while let Some(e) = app.window.next() {
         if let Some(r) = e.render_args() {
             app.render(&r, &e);
         }
